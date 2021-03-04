@@ -1,0 +1,98 @@
+#!/usr/bin/env python2.7
+
+#
+# Compute descriptive statistics from a stream of numbers on stdin.
+#
+
+import re
+import stats
+import string
+import sys
+
+showAll    = False
+showHeader = True
+showStats  = True
+
+intwidth = 5
+fltwidth = 11
+fltprec  = 4
+
+fieldNames = [ 'Count',
+               'Sum',
+               'Min',
+               'Max',
+               'Mean',
+               'Var', 
+               'StdDev',
+               'StdErr',
+               'HWidth',
+               '%HWidth' ]
+visible = [h for h in fieldNames if h not in [ 'Sum', 'Var', 'StdErr' ]]
+
+def fmtInt(value):
+    return ('{0: >%dd}' % intwidth).format(value)
+
+def fmtFloat(value):
+    return ('{0: >%d.%df}' % (fltwidth, fltprec)).format(value)
+
+def fmtValue(field):
+    if field == 'HWidth':
+        func = lambda stats: fmtFloat(stats.conf())
+    elif field == '%HWidth':
+        func = lambda stats: fmtFloat(100.0 * stats.conf() / stats.mean())
+    elif field == 'Count':
+        func = lambda stats: fmtInt(getattr(stats, 'count')())
+    else:
+        func = lambda stats: fmtFloat(getattr(stats, string.lower(field))())
+    return func
+
+def fmtHeader(value):
+    if field == 'Count':
+        func = lambda: ('{0: >%ds}' % intwidth).format(value)
+    else:
+        func = lambda: ('{0: >%ds}' % fltwidth).format(value)
+    return func
+
+fieldSpecs = {}
+for field in fieldNames:
+    # Set defaults and correct below...
+    fieldSpecs[field] = { 'name': field,
+                          'show': field in visible,
+                          'header': fmtHeader(field),
+                          'value': fmtValue(field) }
+
+def fmtFields(fields, init=' '):
+    lst = [init]
+    for field in fieldNames:
+        spec = fieldSpecs[field]
+        if spec['show']:
+            value = fields(spec)
+            lst.extend(value)
+    return ''.join(lst)
+        
+def displayHeader():
+    if showHeader:
+        def getHeaderParam(field):
+            return field['header']()
+        print fmtFields(getHeaderParam, '#')
+
+def displayStats(stats):
+    if showStats:
+        def getValueParam(field, stats):
+            return field['value'](stats)
+        func = lambda field: getValueParam(field, stats)
+        print fmtFields(func, ' ')
+
+def processLines(lines):
+    displayHeader()
+    s = stats.Stats()
+    nummatcher = re.compile(r'^\s*[+-]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?\s*$')
+    for line in lines:
+        for token in line.split():
+            if not nummatcher.match(token):
+                print 'Error: "%s" is not a number' % token
+                sys.exit(-1)
+            s.add(float(token))
+    displayStats(s)
+    
+processLines(sys.stdin)
